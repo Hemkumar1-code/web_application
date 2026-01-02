@@ -4,46 +4,82 @@ import axios from 'axios';
 import './index.css';
 
 function App() {
-  const [mobileNumber, setMobileNumber] = useState('');
+  const [punchNumber, setPunchNumber] = useState('');
   const [scans, setScans] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
+  const [startScan, setStartScan] = useState(null);
+  const [endScan, setEndScan] = useState(null);
 
-  const MAX_SCANS = 13;
-
-  const handleScan = (data) => {
+  const handleScan = async (data) => {
+    // Close scanner if open
     setIsScanning(false);
 
-    // Parse data
-    let quantity = 'N/A';
-    let location = 'N/A';
-
-    // Attempt parse JSON
-    try {
-      const parsed = JSON.parse(data);
-      if (parsed.quantity || parsed.qty) quantity = parsed.quantity || parsed.qty;
-      if (parsed.location || parsed.loc) location = parsed.location || parsed.loc;
-    } catch (e) {
-      // Fallback: try comma separation
-      const parts = data.split(',');
-      if (parts.length >= 2) {
-        quantity = parts[0].trim();
-        location = parts[1].trim();
-      } else {
-        location = data; // Assume raw data is location if single string?
-      }
+    if (!data || !punchNumber) {
+      setMessage({ type: 'error', text: 'Please enter a Punch Number before scanning.' });
+      return;
     }
 
+    setLoading(true);
+    setMessage(null);
+
+    const timestamp = new Date().toLocaleString();
+
+    // Determine Start and End scan usage
+    let currentStartScan = startScan;
+    if (!currentStartScan) {
+      currentStartScan = data;
+      setStartScan(data);
+    }
+    setEndScan(data);
+    const currentEndScan = data;
+
+    // Add to local history for display
     const newScan = {
-      mobile: mobileNumber,
-      quantity,
-      location, // or raw data
-      timestamp: new Date().toLocaleString(),
-      raw: data
+      punchNumber,
+      scanData: data,
+      timestamp,
+      status: 'Sending...',
+      startScan: currentStartScan,
+      endScan: currentEndScan
     };
 
-    setScans([...scans, newScan]);
+    // Optimistic update
+    const newScans = [newScan, ...scans];
+    setScans(newScans);
+
+    try {
+
+      // Use relative path in production to use Vercel rewrites, avoiding mixed content issues
+      const apiUrl = import.meta.env.PROD || import.meta.env.VITE_API_URL
+        ? '/api'
+        : 'http://localhost:5000';
+
+
+      // Send immediately to backend
+      await axios.post(`${apiUrl}/submit`, {
+
+        punchNumber,
+        scanData: data,
+        startScan: currentStartScan,
+        endScan: currentEndScan,
+        timestamp
+      });
+
+      // Update status
+      newScans[0].status = 'Sent';
+      setScans([...newScans]);
+      setMessage({ type: 'success', text: 'Scan sent successfully!' });
+
+    } catch (error) {
+      console.error(error);
+      newScans[0].status = 'Failed';
+      setScans([...newScans]);
+      setMessage({ type: 'error', text: 'Failed to send scan. Check server.' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const deleteScan = (index) => {
@@ -52,47 +88,50 @@ function App() {
     setScans(newScans);
   };
 
-  const handleSubmit = async () => {
-    if (scans.length === 0) return;
-    setLoading(true);
+  const resetSession = () => {
+    setScans([]);
+    setStartScan(null);
+    setEndScan(null);
     setMessage(null);
-
-    try {
-      // Send to backend
-      // Assuming backend is on localhost:5000
-      const response = await axios.post('http://localhost:5000/submit', { scans });
-      setMessage({ type: 'success', text: 'Submitted successfully! Check your email.' });
-      setScans([]);
-    } catch (error) {
-      console.error(error);
-      setMessage({ type: 'error', text: 'Submission failed. Ensure server is running.' });
-    } finally {
-      setLoading(false);
-    }
   };
 
   return (
     <div className="app-container">
       <header>
-        <h1>QR Dispatch Scanner</h1>
-        <p>Scan and track inventory dispatch.</p>
+        <h1>Scan & Dispatch</h1>
+        <p>Premium Inventory Tracking</p>
       </header>
 
       <div className="main-card">
+        {/* Punch Number Field */}
         <div className="input-group">
-          <label>Mobile Number</label>
+          <label htmlFor="punch-number">Punch Number</label>
           <input
-            type="tel"
-            placeholder="Enter your mobile number"
-            value={mobileNumber}
-            onChange={(e) => setMobileNumber(e.target.value)}
+            id="punch-number"
+            type="text"
+            placeholder="Enter Punch ID"
+            value={punchNumber}
+            onChange={(e) => setPunchNumber(e.target.value)}
           />
         </div>
 
+        {/* Stats Bar */}
         <div className="stats-bar">
-          <span>Scanned: {scans.length} / {MAX_SCANS}</span>
+          <div className="stat-item">
+            <span className="stat-label">Scanned Col</span>
+            <span className="stat-value">20</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">Start Scan</span>
+            <span className="stat-value">{startScan || '-'}</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">End Scan</span>
+            <span className="stat-value">{endScan || '-'}</span>
+          </div>
         </div>
 
+        {/* Scanner Component */}
         {isScanning && (
           <Scanner
             onScan={handleScan}
@@ -102,41 +141,40 @@ function App() {
 
         <div className="actions">
           <button
-            className="btn-primary scan-btn"
+            className="btn-primary"
             onClick={() => setIsScanning(true)}
-            disabled={scans.length >= MAX_SCANS || !mobileNumber}
+            disabled={!punchNumber || loading}
           >
-            {scans.length >= MAX_SCANS ? 'Limit Reached' : 'Scan QR Code'}
+            {loading ? 'Processing...' : 'Start QR Scanner'}
+          </button>
+
+          <button
+            className="btn-secondary"
+            onClick={resetSession}
+            disabled={loading}
+          >
+            Reset Session
           </button>
         </div>
 
+        {/* Recent Activity */}
         {scans.length > 0 && (
           <div className="scan-list">
-            <h3>Scanned Items</h3>
+            <h3>Recent Activity</h3>
             <ul>
               {scans.map((scan, idx) => (
                 <li key={idx} className="scan-item">
                   <div className="scan-info">
-                    <strong>Qty: {scan.quantity}</strong>
-                    <span>Loc: {scan.location}</span>
-                    <small>{scan.timestamp}</small>
+                    <strong>{scan.scanData}</strong>
+                    <span>Punch: {scan.punchNumber} | Status: {scan.status}</span>
+                    <small>Start: {scan.startScan} | End: {scan.endScan}</small>
                   </div>
-                  <button className="btn-delete" onClick={() => deleteScan(idx)}>🗑️</button>
+                  <button className="btn-delete" onClick={() => deleteScan(idx)} title="Clear from history">×</button>
                 </li>
               ))}
             </ul>
           </div>
         )}
-
-        <div className="submit-section">
-          <button
-            className="btn-success"
-            onClick={handleSubmit}
-            disabled={scans.length === 0 || loading}
-          >
-            {loading ? 'Sending...' : 'Generate & Send Excel'}
-          </button>
-        </div>
 
         {message && <div className={`message ${message.type}`}>{message.text}</div>}
       </div>
@@ -145,3 +183,4 @@ function App() {
 }
 
 export default App;
+
