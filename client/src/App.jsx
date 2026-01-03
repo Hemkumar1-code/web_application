@@ -45,27 +45,33 @@ function App() {
       endScan: currentEndScan
     };
 
-    // Optimistic update
+
     const newScans = [newScan, ...scans];
     setScans(newScans);
 
     try {
+      console.log('Sending scan to /api/submit');
 
-      // Use relative path in production to use Vercel rewrites, avoiding mixed content issues
-      const apiUrl = import.meta.env.PROD || import.meta.env.VITE_API_URL
-        ? '/api'
-        : 'http://localhost:5000';
-
-
-      // Send immediately to backend
-      await axios.post(`${apiUrl}/submit`, {
-
-        punchNumber,
-        scanData: data,
-        startScan: currentStartScan,
-        endScan: currentEndScan,
-        timestamp
+      const response = await fetch('/api/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          punchNumber,
+          scanData: data,
+          startScan: currentStartScan,
+          endScan: currentEndScan,
+          timestamp
+        }),
       });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Server response:', result);
 
       // Update status
       newScans[0].status = 'Sent';
@@ -73,10 +79,11 @@ function App() {
       setMessage({ type: 'success', text: 'Scan sent successfully!' });
 
     } catch (error) {
-      console.error(error);
+      console.error('Scan Error:', error);
       newScans[0].status = 'Failed';
       setScans([...newScans]);
-      setMessage({ type: 'error', text: 'Failed to send scan. Check server.' });
+      // Show generic error unless specific handled
+      setMessage({ type: 'error', text: `Failed: ${error.message || 'Check server/network'}` });
     } finally {
       setLoading(false);
     }
