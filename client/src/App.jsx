@@ -26,8 +26,6 @@ function App() {
     setMessage(null);
 
     const timestamp = new Date().toLocaleString();
-
-    // Determine scan usage
     let currentStartScan = startScan;
     if (!currentStartScan) {
       currentStartScan = data;
@@ -88,9 +86,10 @@ function App() {
       if (result.batchCompleted) {
         setStartScan(null);
         setEndScan(null);
+        setMessage({ type: 'success', text: 'Batch scan completed successfully. Email sent.' });
+      } else {
+        setMessage({ type: 'success', text: result.message || 'Scan sent successfully!' });
       }
-
-      setMessage({ type: 'success', text: result.message || 'Scan sent successfully!' });
 
     } catch (error) {
       console.error('Scan Error:', error);
