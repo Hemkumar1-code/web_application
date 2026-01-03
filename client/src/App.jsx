@@ -12,6 +12,7 @@ function App() {
   const [startScan, setStartScan] = useState(null);
   const [endScan, setEndScan] = useState(null);
   const [batchCount, setBatchCount] = useState(0);
+  const [readyToSubmit, setReadyToSubmit] = useState(false);
 
   const handleScan = async (data) => {
     // Close scanner if open
@@ -74,7 +75,7 @@ function App() {
       console.log('Server response:', result);
 
       // Update status
-      newScans[0].status = result.batchCompleted ? 'Batch Sent' : 'Logged';
+      newScans[0].status = 'Logged';
       setScans([...newScans]);
 
       // Update count and message from server
@@ -82,11 +83,10 @@ function App() {
         setBatchCount(result.count);
       }
 
-      // Reset start/end if batch done
-      if (result.batchCompleted) {
-        setStartScan(null);
-        setEndScan(null);
-        setMessage({ type: 'success', text: 'Batch scan completed successfully. Email sent.' });
+      // Check if ready to submit
+      if (result.readyToSubmit) {
+        setReadyToSubmit(true);
+        setMessage({ type: 'success', text: result.message || 'Batch complete.' });
       } else {
         setMessage({ type: 'success', text: result.message || 'Scan sent successfully!' });
       }
@@ -95,8 +95,44 @@ function App() {
       console.error('Scan Error:', error);
       newScans[0].status = 'Failed';
       setScans([...newScans]);
-      // Show generic error unless specific handled
       setMessage({ type: 'error', text: `Failed: ${error.message || 'Check server/network'}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFinalize = async () => {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const apiBaseUrl = import.meta.env.VITE_API_URL || '';
+      console.log(`Finalizing batch for ${punchNumber} at ${apiBaseUrl}/api/finalize`);
+
+      const response = await fetch(`${apiBaseUrl}/api/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ punchNumber }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.batchCompleted) {
+        setStartScan(null);
+        setEndScan(null);
+        setBatchCount(0);
+        setReadyToSubmit(false);
+        setMessage({ type: 'success', text: result.message || '20 scans completed successfully. Email sent.' });
+      } else {
+        setMessage({ type: 'error', text: 'Batch could not be finalized.' });
+      }
+
+    } catch (error) {
+      console.error("Finalize Error:", error);
+      setMessage({ type: 'error', text: `Failed to finalize: ${error.message}` });
     } finally {
       setLoading(false);
     }
@@ -113,6 +149,7 @@ function App() {
     setStartScan(null);
     setEndScan(null);
     setBatchCount(0);
+    setReadyToSubmit(false);
     setMessage(null);
   };
 
@@ -155,15 +192,25 @@ function App() {
           <button
             className="btn-primary"
             onClick={() => setIsScanning(true)}
-            disabled={!punchNumber || loading}
+            disabled={!punchNumber || loading || readyToSubmit}
           >
             {loading ? 'Processing...' : 'Start QR Scanner'}
+          </button>
+
+          <button
+            className="btn-success"
+            onClick={handleFinalize}
+            disabled={!readyToSubmit || loading}
+            style={{ marginLeft: '10px' }}
+          >
+            Submit Batch
           </button>
 
           <button
             className="btn-secondary"
             onClick={resetSession}
             disabled={loading}
+            style={{ marginLeft: '10px' }}
           >
             Reset Session
           </button>
