@@ -50,9 +50,10 @@ function App() {
     setScans(newScans);
 
     try {
-      console.log('Sending scan to /api/submit');
+      const apiBaseUrl = import.meta.env.VITE_API_URL || '';
+      console.log(`Sending scan to ${apiBaseUrl}/api/submit`);
 
-      const response = await fetch('/api/submit', {
+      const response = await fetch(`${apiBaseUrl}/api/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
