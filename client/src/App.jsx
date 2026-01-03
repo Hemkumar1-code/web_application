@@ -11,6 +11,7 @@ function App() {
   const [message, setMessage] = useState(null);
   const [startScan, setStartScan] = useState(null);
   const [endScan, setEndScan] = useState(null);
+  const [batchCount, setBatchCount] = useState(0);
 
   const handleScan = async (data) => {
     // Close scanner if open
@@ -75,9 +76,14 @@ function App() {
       console.log('Server response:', result);
 
       // Update status
-      newScans[0].status = 'Sent';
+      newScans[0].status = result.batchCompleted ? 'Batch Sent' : 'Logged';
       setScans([...newScans]);
-      setMessage({ type: 'success', text: 'Scan sent successfully!' });
+
+      // Update count and message from server
+      if (typeof result.count === 'number') {
+        setBatchCount(result.count);
+      }
+      setMessage({ type: 'success', text: result.message || 'Scan sent successfully!' });
 
     } catch (error) {
       console.error('Scan Error:', error);
@@ -100,14 +106,14 @@ function App() {
     setScans([]);
     setStartScan(null);
     setEndScan(null);
+    setBatchCount(0);
     setMessage(null);
   };
 
   return (
     <div className="app-container">
       <header>
-        <h1>Scan & Dispatch</h1>
-        <p>Premium Inventory Tracking</p>
+        <h1>GeoGuard</h1>
       </header>
 
       <div className="main-card">
@@ -126,8 +132,8 @@ function App() {
         {/* Stats Bar */}
         <div className="stats-bar">
           <div className="stat-item">
-            <span className="stat-label">Scanned Col</span>
-            <span className="stat-value">20</span>
+            <span className="stat-label">Batch Count</span>
+            <span className="stat-value">{batchCount} / 20</span>
           </div>
           <div className="stat-item">
             <span className="stat-label">Start Scan</span>
@@ -191,4 +197,3 @@ function App() {
 }
 
 export default App;
-
