@@ -1,4 +1,5 @@
 const express = require("express");
+require("dotenv").config();
 const XLSX = require("xlsx");
 const nodemailer = require("nodemailer");
 const cors = require("cors");

@@ -27,7 +27,7 @@ function App() {
 
     const timestamp = new Date().toLocaleString();
 
-    // Determine Start and End scan usage
+    // Determine scan usage
     let currentStartScan = startScan;
     if (!currentStartScan) {
       currentStartScan = data;
@@ -83,6 +83,13 @@ function App() {
       if (typeof result.count === 'number') {
         setBatchCount(result.count);
       }
+
+      // Reset start/end if batch done
+      if (result.batchCompleted) {
+        setStartScan(null);
+        setEndScan(null);
+      }
+
       setMessage({ type: 'success', text: result.message || 'Scan sent successfully!' });
 
     } catch (error) {
@@ -132,16 +139,8 @@ function App() {
         {/* Stats Bar */}
         <div className="stats-bar">
           <div className="stat-item">
-            <span className="stat-label">Batch Count</span>
+            <span className="stat-label">Batch Progress</span>
             <span className="stat-value">{batchCount} / 20</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">Start Scan</span>
-            <span className="stat-value">{startScan || '-'}</span>
-          </div>
-          <div className="stat-item">
-            <span className="stat-label">End Scan</span>
-            <span className="stat-value">{endScan || '-'}</span>
           </div>
         </div>
 
@@ -181,7 +180,6 @@ function App() {
                   <div className="scan-info">
                     <strong>{scan.scanData}</strong>
                     <span>Punch: {scan.punchNumber} | Status: {scan.status}</span>
-                    <small>Start: {scan.startScan} | End: {scan.endScan}</small>
                   </div>
                   <button className="btn-delete" onClick={() => deleteScan(idx)} title="Clear from history">×</button>
                 </li>
