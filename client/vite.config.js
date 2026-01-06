@@ -8,9 +8,10 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     base: '/',
     server: {
+      host: true, // Listen on all local IPs
       proxy: {
         '/api': {
-          target: 'http://localhost:5000', // Only used for local development 'npm run dev'
+          target: 'http://localhost:5000',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, '')
         }
@@ -18,4 +19,3 @@ export default defineConfig(({ mode }) => {
     }
   }
 })
-

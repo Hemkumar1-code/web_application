@@ -59,10 +59,11 @@ const handler = async (req, res) => {
             },
         });
 
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const mailOptions = {
             from: process.env.GMAIL_USER,
             to: "hemk3672@gmail.com",
-            subject: `Batch Scan Completed - ${batchNumber}`,
+            subject: `Batch Scan Completed - ${batchNumber} [${timestamp}]`, // Prevent threading
             text: `Batch scanning completed successfully.\n\nBatch Number: ${batchNumber}\nTotal Scans: ${scans.length}\n\nPlease find the attached Excel report.`,
             attachments: [
                 {
@@ -72,9 +73,18 @@ const handler = async (req, res) => {
             ],
         };
 
-        // Send Email
-        await transporter.sendMail(mailOptions);
-        console.log(`Email sent successfully for batch ${batchNumber}`);
+        // Send Email with robust error handling
+        try {
+            await transporter.sendMail(mailOptions);
+            console.log(`Email sent successfully for batch ${batchNumber}`);
+        } catch (emailError) {
+            console.error("Nodemailer Error:", emailError);
+            return res.status(200).json({
+                batchCompleted: true, // Mark as complete even if email failed, to allow reset
+                message: "Batch completed, but Email Failed (Check Server Logs).",
+                error: emailError.message
+            });
+        }
 
         return res.status(200).json({
             batchCompleted: true,
@@ -82,9 +92,9 @@ const handler = async (req, res) => {
         });
 
     } catch (err) {
-        console.error("Finalize Error:", err);
+        console.error("Finalize Critical Error:", err);
         return res.status(500).json({
-            message: "Failed to finalize batch",
+            message: "Failed to finalize batch (Server Error)",
             error: err.message
         });
     }
