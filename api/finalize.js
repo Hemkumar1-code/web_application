@@ -21,8 +21,11 @@ const handler = async (req, res) => {
     try {
         const { batchNumber, scans } = req.body;
         if (!batchNumber || !scans || !Array.isArray(scans)) {
+            console.error('Invalid input received');
             return res.status(400).json({ error: 'INVALID_INPUT', batchCompleted: false });
         }
+
+        console.log(`Processing batch ${batchNumber}`);
 
         try {
             const excelData = scans.map((qrValue, index) => ({
@@ -37,11 +40,13 @@ const handler = async (req, res) => {
             tempFilePath = path.join(os.tmpdir(), fileName);
             XLSX.writeFile(wb, tempFilePath);
         } catch (excelErr) {
+            console.error('Excel generation failed', excelErr);
             return res.status(500).json({ error: "EXCEL_GENERATION_FAILED", batchCompleted: false });
         }
 
         try {
             if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
+                console.error('Missing Gmail credentials');
                 throw new Error("Missing Credentials");
             }
             const transporter = nodemailer.createTransport({
@@ -54,22 +59,25 @@ const handler = async (req, res) => {
             const mailOptions = {
                 from: process.env.GMAIL_USER,
                 to: "hemk3672@gmail.com",
-                subject: `Batch completed`,
+                subject: "Batch completed",
                 text: `Batch scanning completed.\nBatch: ${batchNumber}`,
                 attachments: [{ filename: `${batchNumber}.xlsx`, path: tempFilePath }]
             };
             await transporter.sendMail(mailOptions);
+            console.log(`Email sent for batch ${batchNumber}`);
         } catch (mailErr) {
+            console.error('Mail send failed', mailErr);
             return res.status(500).json({ error: "MAIL_SEND_FAILED", batchCompleted: false });
         }
 
         return res.status(200).json({ message: "MAIL_SENT_AND_BATCH_RESET", batchCompleted: true });
 
     } catch (err) {
+        console.error('Internal server error', err);
         return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", batchCompleted: false });
     } finally {
         if (tempFilePath && fs.existsSync(tempFilePath)) {
-            try { fs.unlinkSync(tempFilePath); } catch (e) { }
+            try { fs.unlinkSync(tempFilePath); } catch (e) { console.error('Cleanup failed', e); }
         }
     }
 };
