@@ -77,7 +77,9 @@ function App() {
 
       // Check for Batch Completion
       if (newCount === 20) {
-        await handleFinalize(currentStartScan, currentEndScan);
+        // Pass the list of scan data strings
+        const allScanData = newScans.map(s => s.scanData);
+        await handleFinalize(allScanData);
       }
 
     } catch (error) {
@@ -90,7 +92,7 @@ function App() {
     }
   };
 
-  const handleFinalize = async (finalStart, finalEnd) => {
+  const handleFinalize = async (scanList) => {
     // Automatically called when batch reaches 20
     try {
       console.log(`Finalizing batch for ${punchNumber}`);
@@ -100,9 +102,8 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          punchNumber,
-          startScan: finalStart, // Use passed values to ensure latest state
-          endScan: finalEnd
+          batchNumber: punchNumber,
+          scans: scanList
         }),
       });
 
@@ -111,6 +112,11 @@ function App() {
 
       if (result.batchCompleted) {
         setMessage({ type: 'success', text: result.message || 'Batch completed and email sent!' });
+        // Auto Reset Logic
+        setTimeout(() => {
+          resetSession();
+          setMessage({ type: 'info', text: 'Session reset. Ready for next batch.' });
+        }, 2000); // 2 second delay to let user see success message
       } else {
         setMessage({ type: 'error', text: 'Batch could not be finalized.' });
       }

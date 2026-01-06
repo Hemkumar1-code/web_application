@@ -1,3 +1,6 @@
+const nodemailer = require('nodemailer');
+const XLSX = require('xlsx');
+
 // Allow CORS helper
 const allowCors = (fn) => async (req, res) => {
     res.setHeader('Access-Control-Allow-Credentials', true);
@@ -14,37 +17,34 @@ const allowCors = (fn) => async (req, res) => {
     return await fn(req, res);
 };
 
-const nodemailer = require('nodemailer');
-const XLSX = require('xlsx');
-
 const handler = async (req, res) => {
     try {
-        const { punchNumber, startScan, endScan } = req.body;
+        const { batchNumber, scans } = req.body;
 
-        if (!punchNumber) {
-            return res.status(400).json({ message: 'Missing punch number' });
+        if (!batchNumber || !scans || !Array.isArray(scans)) {
+            return res.status(400).json({ message: 'Missing Batch Number or Scans List' });
         }
 
-        console.log(`Finalizing batch for ${punchNumber}. Start: ${startScan}, End: ${endScan}`);
+        console.log(`Finalizing batch ${batchNumber}. Total scans: ${scans.length}`);
 
-        // Excel creation logic
-        const excelData = [
-            {
-                "Punch Number": punchNumber,
-                Scanned: 20,
-                "Start Scan Number": startScan || "N/A",
-                "End Scan Number": endScan || "N/A",
-            },
-        ];
+        // Excel Generation Logic
+        // Rule: Batch Number only on the first row.
+        const excelData = scans.map((qrValue, index) => ({
+            "Batch Number": index === 0 ? batchNumber : "",
+            "QR Value": qrValue
+        }));
+
         const wb = XLSX.utils.book_new();
         const ws = XLSX.utils.json_to_sheet(excelData);
+
+        // Set column widths for better readability
         ws["!cols"] = [
-            { wch: 15 },
-            { wch: 10 },
-            { wch: 20 },
-            { wch: 20 },
+            { wch: 20 }, // Batch Number width
+            { wch: 40 }, // QR Value width
         ];
-        XLSX.utils.book_append_sheet(wb, ws, "Scan Data");
+
+        XLSX.utils.book_append_sheet(wb, ws, "Batch Data");
+
         const excelBuffer = XLSX.write(wb, {
             bookType: "xlsx",
             type: "buffer",
@@ -54,38 +54,31 @@ const handler = async (req, res) => {
         const transporter = nodemailer.createTransport({
             service: "gmail",
             auth: {
-                type: "OAuth2",
-                user: process.env.EMAIL_USER,
-                clientId: process.env.GOOGLE_CLIENT_ID,
-                clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-                refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
+                user: process.env.GMAIL_USER,
+                pass: process.env.GMAIL_APP_PASSWORD,
             },
         });
 
         const mailOptions = {
-            from: process.env.EMAIL_USER,
+            from: process.env.GMAIL_USER,
             to: "hemk3672@gmail.com",
-            subject: `Batch Complete - ${punchNumber}`,
-            text: `Batch scanning completed for Punch Number: ${punchNumber}.\nTotal Scans: 20.\nStart: ${startScan}\nEnd: ${endScan}`,
+            subject: `Batch Scan Completed - ${batchNumber}`,
+            text: `Batch scanning completed successfully.\n\nBatch Number: ${batchNumber}\nTotal Scans: ${scans.length}\n\nPlease find the attached Excel report.`,
             attachments: [
                 {
-                    filename: `batch_scan_${punchNumber}.xlsx`,
+                    filename: `${batchNumber}.xlsx`,
                     content: excelBuffer,
                 },
             ],
         };
 
-        // Try sending email
-        if (process.env.GOOGLE_REFRESH_TOKEN) {
-            await transporter.sendMail(mailOptions);
-            console.log("Mail sent successfully");
-        } else {
-            console.warn("No Refresh Token provided, skipping email.");
-        }
+        // Send Email
+        await transporter.sendMail(mailOptions);
+        console.log(`Email sent successfully for batch ${batchNumber}`);
 
         return res.status(200).json({
             batchCompleted: true,
-            message: "Batch finalized and email sent successfully."
+            message: "Batch completed. Email sent successfully."
         });
 
     } catch (err) {
