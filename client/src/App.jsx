@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import Scanner from './components/Scanner';
-import axios from 'axios';
 import './index.css';
 
 function App() {
@@ -12,14 +11,17 @@ function App() {
   const [startScan, setStartScan] = useState(null);
   const [endScan, setEndScan] = useState(null);
   const [batchCount, setBatchCount] = useState(0);
-  const [readyToSubmit, setReadyToSubmit] = useState(false);
 
   const handleScan = async (data) => {
-    // Close scanner if open
-    setIsScanning(false);
+    setIsScanning(false); // Close scanner after scan
 
     if (!data || !punchNumber) {
       setMessage({ type: 'error', text: 'Please enter a Punch Number before scanning.' });
+      return;
+    }
+
+    if (batchCount >= 20) {
+      setMessage({ type: 'warning', text: 'Batch is full (20/20). Please reset to start a new batch.' });
       return;
     }
 
@@ -27,15 +29,17 @@ function App() {
     setMessage(null);
 
     const timestamp = new Date().toLocaleString();
-    let currentStartScan = startScan;
-    if (!currentStartScan) {
-      currentStartScan = data;
-      setStartScan(data);
-    }
-    setEndScan(data);
+
+    // Determine start/end for this batch
+    // If this is the first scan (batchCount === 0), it's the start.
+    const isFirstScan = batchCount === 0;
+    const currentStartScan = isFirstScan ? data : startScan;
     const currentEndScan = data;
 
-    // Add to local history for display
+    if (isFirstScan) setStartScan(data);
+    setEndScan(data);
+
+    // Add to local history
     const newScan = {
       punchNumber,
       scanData: data,
@@ -45,48 +49,35 @@ function App() {
       endScan: currentEndScan
     };
 
-
     const newScans = [newScan, ...scans];
     setScans(newScans);
 
     try {
-      // Use relative path for Vercel production
+      // Log the scan
       const response = await fetch('/api/scan', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           punchNumber,
           scanData: data,
-          startScan: currentStartScan,
-          endScan: currentEndScan,
           timestamp
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
       const result = await response.json();
-      console.log('Server response:', result);
 
-      // Update status
+      // Update local state on success
       newScans[0].status = 'Logged';
       setScans([...newScans]);
 
-      // Update count and message from server
-      if (typeof result.count === 'number') {
-        setBatchCount(result.count);
-      }
+      const newCount = batchCount + 1;
+      setBatchCount(newCount);
+      setMessage({ type: 'success', text: `Scan logged! (${newCount} / 20)` });
 
-      // Check if ready to submit
-      if (result.readyToSubmit) {
-        setReadyToSubmit(true);
-        setMessage({ type: 'success', text: result.message || 'Batch complete.' });
-      } else {
-        setMessage({ type: 'success', text: result.message || 'Scan sent successfully!' });
+      // Check for Batch Completion
+      if (newCount === 20) {
+        await handleFinalize(currentStartScan, currentEndScan);
       }
 
     } catch (error) {
@@ -99,30 +90,27 @@ function App() {
     }
   };
 
-  const handleFinalize = async () => {
-    setLoading(true);
-    setMessage(null);
+  const handleFinalize = async (finalStart, finalEnd) => {
+    // Automatically called when batch reaches 20
     try {
       console.log(`Finalizing batch for ${punchNumber}`);
+      setMessage({ type: 'info', text: 'Batch Complete (20/20). Finalizing and sending email...' });
 
       const response = await fetch('/api/finalize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ punchNumber }),
+        body: JSON.stringify({
+          punchNumber,
+          startScan: finalStart, // Use passed values to ensure latest state
+          endScan: finalEnd
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
       const result = await response.json();
 
       if (result.batchCompleted) {
-        setStartScan(null);
-        setEndScan(null);
-        setBatchCount(0);
-        setReadyToSubmit(false);
-        setMessage({ type: 'success', text: result.message || '20 scans completed successfully. Email sent.' });
+        setMessage({ type: 'success', text: result.message || 'Batch completed and email sent!' });
       } else {
         setMessage({ type: 'error', text: 'Batch could not be finalized.' });
       }
@@ -130,15 +118,22 @@ function App() {
     } catch (error) {
       console.error("Finalize Error:", error);
       setMessage({ type: 'error', text: `Failed to finalize: ${error.message}` });
-    } finally {
-      setLoading(false);
     }
   };
 
   const deleteScan = (index) => {
+    // Optional: If deleting a scan affects the count, logic usually handles it. 
+    // But requirement says "Total batch size is fixed". 
+    // We'll allow deletion but it might mess up the "20th" logic if not careful.
+    // For now, assuming "delete from history" doesn't decrement the official "Batch Count" 
+    // unless we want it to. The user requirement "Prevent batch count from exceeding 20" 
+    // implies strictly counting successes.
+    // If I delete, should I decrement?
+    // Let's assume yes, to allow correction of mistakes.
     const newScans = [...scans];
     newScans.splice(index, 1);
     setScans(newScans);
+    if (batchCount > 0) setBatchCount(batchCount - 1);
   };
 
   const resetSession = () => {
@@ -146,7 +141,6 @@ function App() {
     setStartScan(null);
     setEndScan(null);
     setBatchCount(0);
-    setReadyToSubmit(false);
     setMessage(null);
   };
 
@@ -186,22 +180,17 @@ function App() {
         )}
 
         <div className="actions">
-          <button
-            className="btn-primary"
-            onClick={() => setIsScanning(true)}
-            disabled={!punchNumber || loading || readyToSubmit}
-          >
-            {loading ? 'Processing...' : 'Start QR Scanner'}
-          </button>
-
-          <button
-            className="btn-success"
-            onClick={handleFinalize}
-            disabled={!readyToSubmit || loading}
-            style={{ marginLeft: '10px' }}
-          >
-            Submit Batch
-          </button>
+          {batchCount < 20 ? (
+            <button
+              className="btn-primary"
+              onClick={() => setIsScanning(true)}
+              disabled={!punchNumber || loading || batchCount >= 20}
+            >
+              {loading ? 'Processing...' : 'Open Scanner'}
+            </button>
+          ) : (
+            <div className="batch-complete-msg">Batch Complete (20/20)</div>
+          )}
 
           <button
             className="btn-secondary"

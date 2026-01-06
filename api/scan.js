@@ -1,5 +1,12 @@
 const nodemailer = require('nodemailer');
-const XLSX = require('xlsx');
+const dotenv = require('dotenv');
+
+// Load environment variables
+dotenv.config();
+
+// In-Memory Store (Note: Volatile on Vercel Serverless)
+// For production persistence, use a database like MongoDB, PostgreSQL, or Redis.
+const batchStore = new Map();
 
 // Allow CORS helper
 const allowCors = (fn) => async (req, res) => {
@@ -19,82 +26,74 @@ const allowCors = (fn) => async (req, res) => {
 
 const handler = async (req, res) => {
     try {
-        const { punchNumber, scanData, startScan, endScan, timestamp } = req.body;
+        const { punchNumber, scanData } = req.body;
 
-        if (!punchNumber || !scanData) {
-            return res.status(400).json({ message: 'Missing punch number or scan data' });
+        // Use punchNumber as batchId
+        const batchId = punchNumber;
+
+        if (!batchId || !scanData) {
+            return res.status(400).json({ message: 'Missing Batch ID (punchNumber) or Scan Data' });
         }
 
-        // Excel creation logic
-        const excelData = [
-            {
-                "Punch Number": punchNumber,
-                Scanned: 20,
-                "Start Scan Number": startScan || scanData,
-                "End Scan Number": endScan || scanData,
-            },
-        ];
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet(excelData);
-        ws["!cols"] = [
-            { wch: 15 },
-            { wch: 10 },
-            { wch: 20 },
-            { wch: 20 },
-        ];
-        XLSX.utils.book_append_sheet(wb, ws, "Scan Data");
-        const excelBuffer = XLSX.write(wb, {
-            bookType: "xlsx",
-            type: "buffer",
-        });
+        // Initialize batch if not exists
+        if (!batchStore.has(batchId)) {
+            batchStore.set(batchId, { count: 0, mailSent: false });
+        }
 
-        // Email setup
-        const transporter = nodemailer.createTransport({
-            service: "gmail",
-            auth: {
-                type: "OAuth2",
-                user: process.env.EMAIL_USER,
-                clientId: process.env.GOOGLE_CLIENT_ID,
-                clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-                refreshToken: process.env.GOOGLE_REFRESH_TOKEN,
-            },
-        });
+        const batch = batchStore.get(batchId);
 
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: "hemk3672@gmail.com",
-            subject: `Scan Update - ${punchNumber}`,
-            text: `Scan: ${scanData}`,
-            attachments: [
-                {
-                    filename: `scan_${punchNumber}.xlsx`,
-                    content: excelBuffer,
-                },
-            ],
-        };
+        // Increment scan count
+        // Note: Logic assumes strictly sequential requests or single instance.
+        if (batch.count < 20) {
+            batch.count += 1;
+        }
 
-        // Try sending email
-        let emailStatus = "Skipped";
-        try {
-            if (process.env.GOOGLE_REFRESH_TOKEN) {
+        const isComplete = batch.count === 20;
+        let emailStatus = 'Not Required';
+
+        // Check for 20th scan and Email Trigger
+        if (isComplete && !batch.mailSent) {
+            console.log(`Batch ${batchId} hit 20/20. Sending email...`);
+
+            try {
+                const transporter = nodemailer.createTransport({
+                    service: 'gmail',
+                    auth: {
+                        user: process.env.GMAIL_USER,
+                        pass: process.env.GMAIL_APP_PASSWORD
+                    }
+                });
+
+                const mailOptions = {
+                    from: process.env.GMAIL_USER,
+                    to: 'hemk3672@gmail.com',
+                    subject: 'Batch Scan Completed – 20/20',
+                    text: 'Your batch scanning has been successfully completed (20/20).'
+                };
+
                 await transporter.sendMail(mailOptions);
-                emailStatus = "Sent";
-                console.log("Mail sent successfully");
-            } else {
-                console.warn("No Refresh Token provided, skipping email.");
-            }
-        } catch (mailErr) {
-            console.warn("Mail failed:", mailErr.message);
-            emailStatus = "Failed";
-        }
 
-        // Determine if batch is complete (logic purely based on scan count or similar? 
-        // User logic implies a count check, but here we just process one scan).
-        // App.jsx expects { message: "...", count: <number> }
-        // We will return a basic success.
+                // Mark as sent to prevent duplicates
+                batch.mailSent = true;
+                emailStatus = 'Sent';
+                console.log(`Email sent for batch ${batchId}`);
+
+            } catch (emailError) {
+                console.error('Email sending failed:', emailError);
+                emailStatus = 'Failed';
+                // Do not set mailSent = true so we can retry? 
+                // Creating a simplified retry logic: if it failed, next scan won't trigger it because count is already 20.
+                // Re-trigger logic would require complex state management.
+            }
+        } else if (isComplete && batch.mailSent) {
+            emailStatus = 'Already Sent';
+        }
 
         return res.status(200).json({
             message: "Scan logged successfully",
+            batchId,
+            count: batch.count,
+            total: 20,
             emailStatus
         });
 
