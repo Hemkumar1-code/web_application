@@ -107,18 +107,29 @@ function App() {
         }),
       });
 
-      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+      // Handle non-200 HTTP errors
+      if (!response.ok) {
+        const errorData = await response.json();
+        // If server says "false" on batchCompleted, it means mail failed.
+        setMessage({
+          type: 'error',
+          text: `Email Failed: ${errorData.details || errorData.error || 'Server Error'}. Please check internet/server.`
+        });
+        return; // DO NOT RESET
+      }
+
       const result = await response.json();
 
       if (result.batchCompleted) {
         setMessage({ type: 'success', text: result.message || 'Batch completed and email sent!' });
-        // Auto Reset Logic
+        // Auto Reset Logic ONLY on Success
         setTimeout(() => {
           resetSession();
           setMessage({ type: 'info', text: 'Session reset. Ready for next batch.' });
-        }, 2000); // 2 second delay to let user see success message
+        }, 2000);
       } else {
-        setMessage({ type: 'error', text: 'Batch could not be finalized.' });
+        // Fallback for logic error
+        setMessage({ type: 'error', text: result.error || 'Batch could not be finalized.' });
       }
 
     } catch (error) {
