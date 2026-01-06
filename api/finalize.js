@@ -3,6 +3,7 @@ const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+require('dotenv').config(); // Load env vars if running locally check
 
 const allowCors = (fn) => async (req, res) => {
     res.setHeader('Access-Control-Allow-Credentials', true);
