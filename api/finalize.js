@@ -21,7 +21,7 @@ const handler = async (req, res) => {
     try {
         const { batchNumber, scans } = req.body;
         if (!batchNumber || !scans || !Array.isArray(scans)) {
-            console.error('Invalid input received');
+            console.error('Invalid input');
             return res.status(400).json({ error: 'INVALID_INPUT', batchCompleted: false });
         }
 
