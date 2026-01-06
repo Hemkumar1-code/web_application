@@ -50,10 +50,8 @@ function App() {
     setScans(newScans);
 
     try {
-      const apiBaseUrl = import.meta.env.VITE_API_URL || '';
-      console.log(`Sending scan to ${apiBaseUrl}/api/submit`);
-
-      const response = await fetch(`${apiBaseUrl}/api/submit`, {
+      // Use relative path for Vercel production
+      const response = await fetch('/api/scan', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -105,10 +103,9 @@ function App() {
     setLoading(true);
     setMessage(null);
     try {
-      const apiBaseUrl = import.meta.env.VITE_API_URL || '';
-      console.log(`Finalizing batch for ${punchNumber} at ${apiBaseUrl}/api/finalize`);
+      console.log(`Finalizing batch for ${punchNumber}`);
 
-      const response = await fetch(`${apiBaseUrl}/api/finalize`, {
+      const response = await fetch('/api/finalize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ punchNumber }),
