@@ -27,6 +27,7 @@ const handler = async (req, res) => {
 
         console.log(`Processing batch ${batchNumber}`);
 
+        // EXCEL GENERATION
         try {
             const excelData = scans.map((qrValue, index) => ({
                 "Batch Number": index === 0 ? batchNumber : "",
@@ -46,31 +47,50 @@ const handler = async (req, res) => {
 
             if (!fs.existsSync(tempFilePath)) {
                 console.error("Excel file not found after generation");
-                return res.status(500).json({ error: "EXCEL_GENERATION_FAILED", batchCompleted: false });
+                return res.status(500).json({ error: "EXCEL_GENERATION_FAILED", details: "File not found on disk", batchCompleted: false });
             }
 
         } catch (excelErr) {
             console.error('Excel generation failed', excelErr);
-            return res.status(500).json({ error: "EXCEL_GENERATION_FAILED", batchCompleted: false });
+            return res.status(500).json({ error: "EXCEL_GENERATION_FAILED", details: excelErr.message, batchCompleted: false });
         }
 
+        // EMAIL SENDING
         try {
-            if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
-                console.error('Missing Gmail credentials');
-                throw new Error("Missing Credentials");
+            // DEBUG: Check if env vars are loaded (Don't reveal full password)
+            const user = process.env.GMAIL_USER;
+            const pass = process.env.GMAIL_APP_PASSWORD;
+
+            if (!user || !pass) {
+                console.error('Missing Gmail credentials in Env');
+                return res.status(500).json({
+                    error: "CONFIG_ERROR",
+                    details: "GMAIL_USER or GMAIL_APP_PASSWORD is missing in Vercel Settings",
+                    batchCompleted: false
+                });
             }
+
+            console.log(`Attempting to send mail from: ${user}`);
+
             const transporter = nodemailer.createTransport({
                 service: "gmail",
-                auth: {
-                    user: process.env.GMAIL_USER,
-                    pass: process.env.GMAIL_APP_PASSWORD,
-                },
+                auth: { user, pass },
             });
+
+            // Verify connection configuration
+            try {
+                await transporter.verify();
+                console.log("SMTP Connection verified");
+            } catch (verifyErr) {
+                console.error("SMTP Verify Failed:", verifyErr);
+                throw new Error(`SMTP Connect Failed: ${verifyErr.message}`);
+            }
+
             const mailOptions = {
-                from: process.env.GMAIL_USER,
+                from: user,
                 to: "hemk3672@gmail.com",
-                subject: "Batch Completed",
-                text: "Batch done with 20 scans",
+                subject: `Batch Completed: ${batchNumber}`,
+                text: `Batch scanning completed.\nBatch: ${batchNumber}\nScans: ${scans.length}`,
                 attachments: [{ filename: `${batchNumber}.xlsx`, path: tempFilePath }]
             };
 
@@ -78,11 +98,12 @@ const handler = async (req, res) => {
             console.log("MAIL_SENT_SUCCESS");
 
         } catch (mailErr) {
-            console.error("MAIL_SEND_FAILED", mailErr.message);
-            // Return actual error message for debugging on frontend
+            console.error("MAIL_SEND_FAILED_LOG:", mailErr);
+
+            // Return FULL error details to frontend for debugging
             return res.status(500).json({
                 error: "MAIL_SEND_FAILED",
-                details: mailErr.message, // This helps you see why it failed in the UI toast
+                details: mailErr.message || JSON.stringify(mailErr),
                 batchCompleted: false
             });
         }
@@ -91,7 +112,7 @@ const handler = async (req, res) => {
 
     } catch (err) {
         console.error('Internal server error', err);
-        return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", batchCompleted: false });
+        return res.status(500).json({ error: "INTERNAL_SERVER_ERROR", details: err.message, batchCompleted: false });
     } finally {
         if (tempFilePath && fs.existsSync(tempFilePath)) {
             try { fs.unlinkSync(tempFilePath); } catch (e) { console.error('Cleanup failed', e); }
