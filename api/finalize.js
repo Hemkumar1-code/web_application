@@ -36,9 +36,19 @@ const handler = async (req, res) => {
             const ws = XLSX.utils.json_to_sheet(excelData);
             ws["!cols"] = [{ wch: 20 }, { wch: 40 }];
             XLSX.utils.book_append_sheet(wb, ws, "Batch Data");
+
             const fileName = `batch_${batchNumber}_${Date.now()}.xlsx`;
             tempFilePath = path.join(os.tmpdir(), fileName);
+
             XLSX.writeFile(wb, tempFilePath);
+
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            if (!fs.existsSync(tempFilePath)) {
+                console.error("Excel file not found after generation");
+                return res.status(500).json({ error: "EXCEL_GENERATION_FAILED", batchCompleted: false });
+            }
+
         } catch (excelErr) {
             console.error('Excel generation failed', excelErr);
             return res.status(500).json({ error: "EXCEL_GENERATION_FAILED", batchCompleted: false });
@@ -59,14 +69,16 @@ const handler = async (req, res) => {
             const mailOptions = {
                 from: process.env.GMAIL_USER,
                 to: "hemk3672@gmail.com",
-                subject: "Batch completed",
-                text: `Batch scanning completed.\nBatch: ${batchNumber}`,
+                subject: "Batch Completed",
+                text: "Batch done with 20 scans",
                 attachments: [{ filename: `${batchNumber}.xlsx`, path: tempFilePath }]
             };
+
             await transporter.sendMail(mailOptions);
-            console.log(`Email sent for batch ${batchNumber}`);
+            console.log("MAIL_SENT_SUCCESS");
+
         } catch (mailErr) {
-            console.error('Mail send failed', mailErr);
+            console.error("MAIL_SEND_FAILED", mailErr);
             return res.status(500).json({ error: "MAIL_SEND_FAILED", batchCompleted: false });
         }
 
