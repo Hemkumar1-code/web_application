@@ -78,8 +78,13 @@ const handler = async (req, res) => {
             console.log("MAIL_SENT_SUCCESS");
 
         } catch (mailErr) {
-            console.error("MAIL_SEND_FAILED", mailErr);
-            return res.status(500).json({ error: "MAIL_SEND_FAILED", batchCompleted: false });
+            console.error("MAIL_SEND_FAILED", mailErr.message);
+            // Return actual error message for debugging on frontend
+            return res.status(500).json({
+                error: "MAIL_SEND_FAILED",
+                details: mailErr.message, // This helps you see why it failed in the UI toast
+                batchCompleted: false
+            });
         }
 
         return res.status(200).json({ message: "MAIL_SENT_AND_BATCH_RESET", batchCompleted: true });
