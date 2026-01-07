@@ -3,7 +3,37 @@ import { Html5Qrcode } from "html5-qrcode";
 
 const Scanner = ({ onScan, onClose }) => {
     const [error, setError] = useState(null);
+    const [isTorchSupported, setIsTorchSupported] = useState(false);
+    const [isTorchOn, setIsTorchOn] = useState(false);
+
     const scannerRef = useRef(null);
+
+    // Helper to get track
+    const getVideoTrack = () => {
+        const video = document.querySelector("#reader video");
+        if (video && video.srcObject) {
+            const tracks = video.srcObject.getVideoTracks();
+            if (tracks && tracks.length > 0) {
+                return tracks[0];
+            }
+        }
+        return null;
+    };
+
+    const toggleTorch = async () => {
+        const track = getVideoTrack();
+        if (!track) return;
+
+        const newStatus = !isTorchOn;
+        try {
+            await track.applyConstraints({
+                advanced: [{ torch: newStatus }]
+            });
+            setIsTorchOn(newStatus);
+        } catch (err) {
+            console.error("Failed to toggle torch", err);
+        }
+    };
 
     useEffect(() => {
         const scannerId = "reader";
@@ -12,13 +42,17 @@ const Scanner = ({ onScan, onClose }) => {
         const startScanner = async () => {
             try {
                 html5QrCode = new Html5Qrcode(scannerId);
-                const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0
+                };
 
                 await html5QrCode.start(
                     { facingMode: "environment" },
                     config,
                     (decodedText) => {
-                        // Success callback - Pure QR Scan
+                        // Success callback
                         html5QrCode.stop().then(() => {
                             onScan(decodedText);
                         }).catch(err => console.error("Failed to stop scanner", err));
@@ -28,6 +62,18 @@ const Scanner = ({ onScan, onClose }) => {
                     }
                 );
                 scannerRef.current = html5QrCode;
+
+                // Check Torch Capability
+                setTimeout(() => {
+                    const track = getVideoTrack();
+                    if (track && track.getCapabilities) {
+                        const capabilities = track.getCapabilities();
+                        if (capabilities.torch) {
+                            setIsTorchSupported(true);
+                        }
+                    }
+                }, 500); // Wait a bit for video to mount
+
             } catch (err) {
                 console.error("Error starting scanner:", err);
                 setError("Could not start camera. Please ensure permissions are granted.");
@@ -43,20 +89,35 @@ const Scanner = ({ onScan, onClose }) => {
         };
     }, [onScan]);
 
+    const handleClose = () => {
+        if (scannerRef.current) {
+            try {
+                // Ensure torch is off implicitly by stopping track, but can allow explicit if needed
+                scannerRef.current.stop().then(onClose).catch(() => onClose());
+            } catch (e) {
+                onClose();
+            }
+        } else {
+            onClose();
+        }
+    };
+
     return (
         <div className="scanner-overlay">
             <div className="scanner-box">
-                <button className="close-btn" onClick={() => {
-                    if (scannerRef.current) {
-                        try {
-                            scannerRef.current.stop().then(onClose).catch(() => onClose());
-                        } catch (e) {
-                            onClose();
-                        }
-                    } else {
-                        onClose();
-                    }
-                }}>&times;</button>
+                {/* Torch Button */}
+                {isTorchSupported && (
+                    <button
+                        className={`flash-btn ${isTorchOn ? 'active' : ''}`}
+                        onClick={toggleTorch}
+                        title="Toggle Flash"
+                    >
+                        {isTorchOn ? '⚡' : '⛈'}
+                    </button>
+                )}
+
+                <button className="close-btn" onClick={handleClose}>&times;</button>
+
                 <h3>Scan QR Code</h3>
                 <div id="reader" style={{ width: "100%", minHeight: "300px" }}></div>
                 {error && <p className="error-msg">{error}</p>}

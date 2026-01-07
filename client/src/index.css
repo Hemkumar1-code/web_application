@@ -18,9 +18,9 @@
   --primary-hover: #4f46e5;
 
   --text-main: #1e293b;
-  /* Slate 800 */
+
   --text-muted: #64748b;
-  /* Slate 500 */
+
   --text-light: #f8fafc;
 
   --success: #10b981;
@@ -60,7 +60,7 @@ body {
   animation: fadeIn 0.6s ease-out;
 }
 
-/* Header */
+
 .app-header {
   display: flex;
   align-items: center;
@@ -80,7 +80,7 @@ body {
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
-/* Fixed Camera Icon */
+
 .fixed-camera-btn {
   position: fixed;
   top: 20px;
@@ -586,6 +586,38 @@ input[type="text"].invalid {
   .btn-primary {
     padding: 14px 20px;
   }
+}
+
+/* Flash Button */
+.flash-btn {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid white;
+  color: white;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.2s;
+}
+
+.flash-btn:hover {
+  background: white;
+  color: #fbbf24;
+}
+
+.flash-btn.active {
+  background: #fbbf24;
+  color: white;
+  border-color: #fbbf24;
+  box-shadow: 0 0 15px rgba(251, 191, 36, 0.6);
 }
 
 @keyframes fadeIn {

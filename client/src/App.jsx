@@ -10,7 +10,7 @@ const PUNCH_MAP = {
   "68": "Rangaraj"
 };
 
-const BATCH_SIZE = 27;
+const BATCH_SIZE = 28;
 
 function App() {
   const [punchNumber, setPunchNumber] = useState('');
