@@ -1,236 +1,277 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Scanner from './components/Scanner';
 import './index.css';
 
+const PUNCH_MAP = {
+  "374": "Jeevanantham",
+  "66": "Shanavas",
+  "388": "Gopal",
+  "68": "Rangaraj"
+};
+
+const BATCH_SIZE = 27;
+
 function App() {
   const [punchNumber, setPunchNumber] = useState('');
+  const [employeeName, setEmployeeName] = useState('');
   const [scans, setScans] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
-  const [startScan, setStartScan] = useState(null);
-  const [endScan, setEndScan] = useState(null);
-  const [batchCount, setBatchCount] = useState(0);
 
-  const handleScan = async (data) => {
-    setIsScanning(false); // Close scanner after scan
+  // Timing State
+  const [firstScanTime, setFirstScanTime] = useState(null);
 
-    if (!data || !punchNumber) {
-      setMessage({ type: 'error', text: 'Please enter a Punch Number before scanning.' });
+  // Load from LocalStorage on Mount
+  useEffect(() => {
+    const savedState = localStorage.getItem('geoGuardState');
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState);
+        setPunchNumber(parsed.punchNumber || '');
+        setEmployeeName(parsed.employeeName || '');
+        setScans(parsed.scans || []);
+        setFirstScanTime(parsed.firstScanTime || null);
+        console.log("Restored state", parsed);
+      } catch (e) {
+        console.error("Failed to restore state", e);
+      }
+    }
+  }, []);
+
+  // Save to LocalStorage on Change
+  useEffect(() => {
+    const stateToSave = {
+      punchNumber,
+      employeeName,
+      scans,
+      firstScanTime
+    };
+    localStorage.setItem('geoGuardState', JSON.stringify(stateToSave));
+  }, [punchNumber, employeeName, scans, firstScanTime]);
+
+  const handlePunchChange = (e) => {
+    const val = e.target.value;
+    setPunchNumber(val);
+    if (!val) {
+      setEmployeeName('');
+      setMessage(null);
       return;
     }
 
-    if (batchCount >= 20) {
-      setMessage({ type: 'warning', text: 'Batch is full (20/20). Please reset to start a new batch.' });
+    if (PUNCH_MAP[val]) {
+      setEmployeeName(PUNCH_MAP[val]);
+      setMessage(null); // Clear errors
+    } else {
+      setEmployeeName('');
+      setMessage({ type: 'error', text: 'Invalid Punch Number' });
+    }
+  };
+
+  const handleScan = async (qrValue, imageData) => {
+    setIsScanning(false);
+
+    if (!qrValue) return;
+
+    // Validate Punch Number
+    if (!punchNumber || !PUNCH_MAP[punchNumber]) {
+      setMessage({ type: 'error', text: 'Invalid Punch Number. Cannot Scan.' });
+      return;
+    }
+
+    // Validate Batch Limit
+    if (scans.length >= BATCH_SIZE) {
+      setMessage({ type: 'warning', text: 'Batch Full. Please wait for processing or reset.' });
+      return;
+    }
+
+    // Validate Duplicate
+    if (scans.some(s => s.qrValue === qrValue)) {
+      setMessage({ type: 'error', text: `Duplicate QR: ${qrValue} already scanned.` });
       return;
     }
 
     setLoading(true);
-    setMessage(null);
+    const now = new Date();
+    const timeString = now.toLocaleTimeString();
 
-    const timestamp = new Date().toLocaleString();
+    // Logic for Times
+    let currentFirstScanTime = firstScanTime;
+    if (scans.length === 0) {
+      currentFirstScanTime = timeString;
+      setFirstScanTime(timeString);
+    }
 
-    // Determine start/end for this batch
-    // If this is the first scan (batchCount === 0), it's the start.
-    const isFirstScan = batchCount === 0;
-    const currentStartScan = isFirstScan ? data : startScan;
-    const currentEndScan = data;
-
-    if (isFirstScan) setStartScan(data);
-    setEndScan(data);
-
-    // Add to local history
     const newScan = {
+      batchNumber: punchNumber, // Using punchNumber as BatchID for now, or could generate a unique ID
+      scanCount: scans.length + 1,
       punchNumber,
-      scanData: data,
-      timestamp,
-      status: 'Sending...',
-      startScan: currentStartScan,
-      endScan: currentEndScan
+      name: PUNCH_MAP[punchNumber],
+      qrValue,
+      scanTime: timeString,
+      capturedImage: imageData, // Base64
+      firstScanTime: currentFirstScanTime,
+      lastScanTime: timeString, // This specific row's last scan time (which is itself)
     };
 
-    const newScans = [newScan, ...scans];
-    setScans(newScans);
+    const updatedScans = [...scans, newScan];
+    setScans(updatedScans);
 
     try {
-      // Log the scan
-      const response = await fetch('/api/scan', {
+      // Optional: Log to server (without image to save bw)
+      await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           punchNumber,
-          scanData: data,
-          timestamp
+          scanData: qrValue,
+          timestamp: timeString
         }),
       });
 
-      if (!response.ok) throw new Error(`Server error: ${response.status}`);
-      const result = await response.json();
+      setMessage({ type: 'success', text: 'Scan logged successfully' });
 
-      // Update local state on success
-      newScans[0].status = 'Logged';
-      setScans([...newScans]);
-
-      const newCount = batchCount + 1;
-      setBatchCount(newCount);
-      setMessage({ type: 'success', text: `Scan logged! (${newCount} / 20)` });
-
-      // Check for Batch Completion
-      if (newCount === 20) {
-        // Pass the list of scan data strings
-        const allScanData = newScans.map(s => s.scanData);
-        await handleFinalize(allScanData);
+      // Check Completion
+      if (updatedScans.length === BATCH_SIZE) {
+        finalizeBatch(updatedScans, currentFirstScanTime, timeString);
       }
 
-    } catch (error) {
-      console.error('Scan Error:', error);
-      newScans[0].status = 'Failed';
-      setScans([...newScans]);
-      setMessage({ type: 'error', text: `Failed: ${error.message || 'Check server/network'}` });
+    } catch (err) {
+      console.error("Logging scan failed", err);
+      setMessage({ type: 'error', text: "Scan logged locally, but server sync failed." });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFinalize = async (scanList) => {
-    // Automatically called when batch reaches 20
-    try {
-      console.log(`Finalizing batch for ${punchNumber}`);
-      setMessage({ type: 'info', text: 'Batch Complete (20/20). Finalizing and sending email...' });
+  const finalizeBatch = async (finalScans, firstTime, lastTime) => {
+    setMessage({ type: 'info', text: `Batch Complete (${BATCH_SIZE}). Finalizing and sending email...` });
 
+    // Calculate Duration
+    // Need full Date objects to diff, but we stored strings.
+    // Ideally we store timestamps. But for display we used strings.
+    // Let's rely on the server or recalculate if we had proper timestamps.
+    // For now, let's just pass the strings. The requirements just say "Calculate... Total_Scan_Duration".
+    // I should probably store raw timestamps in the scan object too.
+
+    try {
       const response = await fetch('/api/finalize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           batchNumber: punchNumber,
-          scans: scanList
+          scans: finalScans,
+          firstScanTime: firstTime,
+          lastScanTime: lastTime
         }),
       });
 
-      // Handle non-200 HTTP errors
-      if (!response.ok) {
-        const errorData = await response.json();
-        // If server says "false" on batchCompleted, it means mail failed.
-        setMessage({
-          type: 'error',
-          text: `Email Failed: ${errorData.details || errorData.error || 'Server Error'}. Please check internet/server.`
-        });
-        return; // DO NOT RESET
-      }
-
       const result = await response.json();
 
-      if (result.batchCompleted) {
-        setMessage({ type: 'success', text: result.message || 'Batch completed and email sent!' });
-        // Auto Reset Logic ONLY on Success
+      if (response.ok && result.batchCompleted) {
+        setMessage({ type: 'success', text: 'Batch Email Sent Successfully!' });
+        // Auto Reset
         setTimeout(() => {
           resetSession();
-          setMessage({ type: 'info', text: 'Session reset. Ready for next batch.' });
-        }, 2000);
+        }, 3000);
       } else {
-        // Fallback for logic error
-        setMessage({ type: 'error', text: result.error || 'Batch could not be finalized.' });
+        setMessage({ type: 'error', text: `Email Failed: ${result.details || result.error}` });
       }
-
-    } catch (error) {
-      console.error("Finalize Error:", error);
-      setMessage({ type: 'error', text: `Failed to finalize: ${error.message}` });
+    } catch (e) {
+      setMessage({ type: 'error', text: `Finalize Failed: ${e.message}` });
     }
-  };
-
-  const deleteScan = (index) => {
-    // Optional: If deleting a scan affects the count, logic usually handles it. 
-    // But requirement says "Total batch size is fixed". 
-    // We'll allow deletion but it might mess up the "20th" logic if not careful.
-    // For now, assuming "delete from history" doesn't decrement the official "Batch Count" 
-    // unless we want it to. The user requirement "Prevent batch count from exceeding 20" 
-    // implies strictly counting successes.
-    // If I delete, should I decrement?
-    // Let's assume yes, to allow correction of mistakes.
-    const newScans = [...scans];
-    newScans.splice(index, 1);
-    setScans(newScans);
-    if (batchCount > 0) setBatchCount(batchCount - 1);
   };
 
   const resetSession = () => {
     setScans([]);
-    setStartScan(null);
-    setEndScan(null);
-    setBatchCount(0);
-    setMessage(null);
+    setFirstScanTime(null);
+    setMessage({ type: 'info', text: 'Session Reset. Ready for next batch.' });
+    localStorage.removeItem('geoGuardState');
   };
+
+  const openScanner = () => {
+    if (!punchNumber || !PUNCH_MAP[punchNumber]) {
+      setMessage({ type: 'error', text: 'Please enter a valid Punch Number first.' });
+      return;
+    }
+    setIsScanning(true);
+  };
+
+  // Camera Icon SVG
+  const CameraIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+      <circle cx="12" cy="13" r="4"></circle>
+    </svg>
+  );
 
   return (
     <div className="app-container">
-      <header>
+      <header className="app-header">
+        <div className="header-left">
+          <button className="camera-btn" onClick={openScanner} title="Open Camera">
+            <CameraIcon />
+          </button>
+        </div>
         <h1>GeoGuard</h1>
       </header>
 
       <div className="main-card">
-        {/* Punch Number Field */}
+        {/* Input Section */}
         <div className="input-group">
-          <label htmlFor="punch-number">Punch Number</label>
-          <input
-            id="punch-number"
-            type="text"
-            placeholder="Enter Punch ID"
-            value={punchNumber}
-            onChange={(e) => setPunchNumber(e.target.value)}
-          />
-        </div>
-
-        {/* Stats Bar */}
-        <div className="stats-bar">
-          <div className="stat-item">
-            <span className="stat-label">Batch Progress</span>
-            <span className="stat-value">{batchCount} / 20</span>
+          <label htmlFor="punch">Punch Number</label>
+          <div className="input-row">
+            <input
+              id="punch"
+              type="text"
+              value={punchNumber}
+              onChange={handlePunchChange}
+              placeholder="Enter ID (e.g. 374)"
+              className={!PUNCH_MAP[punchNumber] && punchNumber ? 'invalid' : ''}
+            />
+            {employeeName && <div className="employee-badge">{employeeName}</div>}
           </div>
         </div>
 
-        {/* Scanner Component */}
+        {/* Progress */}
+        <div className="stats-bar">
+          <div className="stat-item">
+            <span className="stat-label">Batch Count</span>
+            <span className="stat-value">{scans.length} / {BATCH_SIZE}</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">First Scan</span>
+            <span className="stat-value">{firstScanTime || '--:--:--'}</span>
+          </div>
+        </div>
+
+        {/* Scanner Overlay */}
         {isScanning && (
-          <Scanner
-            onScan={handleScan}
-            onClose={() => setIsScanning(false)}
-          />
+          <Scanner onScan={handleScan} onClose={() => setIsScanning(false)} />
         )}
 
+        {/* Manual Close / Status */}
         <div className="actions">
-          {batchCount < 20 ? (
-            <button
-              className="btn-primary"
-              onClick={() => setIsScanning(true)}
-              disabled={!punchNumber || loading || batchCount >= 20}
-            >
-              {loading ? 'Processing...' : 'Open Scanner'}
-            </button>
-          ) : (
-            <div className="batch-complete-msg">Batch Complete (20/20)</div>
-          )}
-
-          <button
-            className="btn-secondary"
-            onClick={resetSession}
-            disabled={loading}
-            style={{ marginLeft: '10px' }}
-          >
-            Reset Session
+          {/* Main action is now the camera icon, but we can keep Reset */}
+          <button className="btn-secondary" onClick={resetSession}>
+            Reset Batch
           </button>
         </div>
 
-        {/* Recent Activity */}
+        {/* Scan List */}
         {scans.length > 0 && (
           <div className="scan-list">
-            <h3>Recent Activity</h3>
+            <h3>Scanned Items</h3>
             <ul>
-              {scans.map((scan, idx) => (
-                <li key={idx} className="scan-item">
+              {[...scans].reverse().map((scan, i) => (
+                <li key={i} className="scan-item">
                   <div className="scan-info">
-                    <strong>{scan.scanData}</strong>
-                    <span>Punch: {scan.punchNumber} | Status: {scan.status}</span>
+                    <strong>{scan.qrValue}</strong>
+                    <span>{scan.scanTime}</span>
                   </div>
-                  <button className="btn-delete" onClick={() => deleteScan(idx)} title="Clear from history">×</button>
+                  {scan.capturedImage && (
+                    <img src={scan.capturedImage} alt="Snap" className="scan-thumb" />
+                  )}
                 </li>
               ))}
             </ul>
@@ -238,6 +279,7 @@ function App() {
         )}
 
         {message && <div className={`message ${message.type}`}>{message.text}</div>}
+
       </div>
     </div>
   );

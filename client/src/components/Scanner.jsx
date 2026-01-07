@@ -5,6 +5,24 @@ const Scanner = ({ onScan, onClose }) => {
     const [error, setError] = useState(null);
     const scannerRef = useRef(null);
 
+    const captureImage = () => {
+        try {
+            const videoElement = document.querySelector("#reader video");
+            if (videoElement) {
+                const canvas = document.createElement("canvas");
+                const scale = Math.min(1, 320 / videoElement.videoWidth);
+                canvas.width = videoElement.videoWidth * scale;
+                canvas.height = videoElement.videoHeight * scale;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                return canvas.toDataURL("image/jpeg", 0.5);
+            }
+        } catch (e) {
+            console.error("Image capture failed", e);
+        }
+        return null; // Return null if capture fails
+    };
+
     useEffect(() => {
         const scannerId = "reader";
         let html5QrCode;
@@ -14,19 +32,19 @@ const Scanner = ({ onScan, onClose }) => {
                 html5QrCode = new Html5Qrcode(scannerId);
                 const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
-                // Prefer back camera
                 await html5QrCode.start(
                     { facingMode: "environment" },
                     config,
                     (decodedText) => {
-                        // Success callback
+                        // Capture image BEFORE stopping
+                        const imageData = captureImage();
+
                         html5QrCode.stop().then(() => {
-                            onScan(decodedText);
+                            onScan(decodedText, imageData);
                         }).catch(err => console.error("Failed to stop scanner", err));
                     },
                     (errorMessage) => {
-                        // Error callback (scanning in progress, no code found yet)
-                        // we ignore distinct errors for UI cleanliness
+                        // ignore
                     }
                 );
                 scannerRef.current = html5QrCode;
@@ -38,7 +56,6 @@ const Scanner = ({ onScan, onClose }) => {
 
         startScanner();
 
-        // Cleanup on unmount
         return () => {
             if (scannerRef.current && scannerRef.current.isScanning) {
                 scannerRef.current.stop().catch(err => console.error("Failed to stop scanner on unmount", err));
