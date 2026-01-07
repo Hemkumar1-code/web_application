@@ -23,6 +23,8 @@ function App() {
 
   // Timing State
   const [firstScanTime, setFirstScanTime] = useState(null);
+  const [firstScanTimestamp, setFirstScanTimestamp] = useState(null);
+  const [lastScanTimestamp, setLastScanTimestamp] = useState(null);
 
   // New Image Handling
   const [pendingImage, setPendingImage] = useState(null);
@@ -37,6 +39,8 @@ function App() {
         setEmployeeName(parsed.employeeName || '');
         setScans(parsed.scans || []);
         setFirstScanTime(parsed.firstScanTime || null);
+        setFirstScanTimestamp(parsed.firstScanTimestamp || null);
+        setLastScanTimestamp(parsed.lastScanTimestamp || null);
         setPendingImage(parsed.pendingImage || null);
       } catch (e) {
         console.error("Failed to restore state", e);
@@ -51,10 +55,12 @@ function App() {
       employeeName,
       scans,
       firstScanTime,
+      firstScanTimestamp,
+      lastScanTimestamp,
       pendingImage
     };
     localStorage.setItem('geoGuardState', JSON.stringify(stateToSave));
-  }, [punchNumber, employeeName, scans, firstScanTime, pendingImage]);
+  }, [punchNumber, employeeName, scans, firstScanTime, pendingImage, firstScanTimestamp, lastScanTimestamp]);
 
   const handlePunchChange = (e) => {
     const val = e.target.value;
@@ -106,13 +112,20 @@ function App() {
     setLoading(true);
     const now = new Date();
     const timeString = now.toLocaleTimeString();
+    const timestamp = now.getTime();
 
     // Logic for Times
     let currentFirstScanTime = firstScanTime;
+    let currentFirstTimestamp = firstScanTimestamp;
+
     if (scans.length === 0) {
       currentFirstScanTime = timeString;
+      currentFirstTimestamp = timestamp;
       setFirstScanTime(timeString);
+      setFirstScanTimestamp(timestamp);
     }
+
+    setLastScanTimestamp(timestamp);
 
     // Use Pending Image if available, otherwise "No Image"
     // Requirement said: "Store the image reference... Captured_Image column can start empty"
@@ -201,7 +214,20 @@ function App() {
     setFirstScanTime(null);
     setPendingImage(null);
     setMessage({ type: 'info', text: 'Session Reset. Ready for next batch.' });
+    setFirstScanTimestamp(null);
+    setLastScanTimestamp(null);
     localStorage.removeItem('geoGuardState');
+  };
+
+  const calculateDuration = () => {
+    if (!firstScanTimestamp || !lastScanTimestamp) return "00:00:00";
+    const diff = lastScanTimestamp - firstScanTimestamp;
+    const totalSeconds = Math.floor(diff / 1000);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${pad(h)}:${pad(m)}:${pad(s)}`;
   };
 
   const openScanner = () => {
@@ -248,28 +274,47 @@ function App() {
               onChange={handlePunchChange}
               placeholder="Enter ID (e.g. 374)"
               className={!PUNCH_MAP[punchNumber] && punchNumber ? 'invalid' : ''}
+              disabled={scans.length > 0}
             />
-            {employeeName && <div className="employee-badge">{employeeName}</div>}
+            {/* Employee name is now in the Batch Card, removed badge here for cleaner look if batch active, 
+                but let's keep it if no batch started so user knows who it is. 
+            */}
+            {employeeName && scans.length === 0 && <div className="employee-badge">{employeeName}</div>}
           </div>
         </div>
 
-        {/* Progress */}
-        <div className="stats-bar">
-          <div className="stat-item">
-            <span className="stat-label">Batch Count</span>
-            <span className="stat-value">{scans.length} / {BATCH_SIZE}</span>
+        {/* Batch Summary Card - REPLACES OLD STATS BAR */}
+        {punchNumber && PUNCH_MAP[punchNumber] && (
+          <div className="batch-summary-card">
+            <div className="batch-row">
+              <div className="batch-item highlight">
+                <span className="label">Batch No.</span>
+                <span className="value">{punchNumber}</span>
+              </div>
+              <div className="batch-item">
+                <span className="label">Name</span>
+                <span className="value">{employeeName}</span>
+              </div>
+            </div>
+            <div className="batch-divider"></div>
+            <div className="batch-row">
+              <div className="batch-item">
+                <span className="label">Scans</span>
+                <span className="value">{scans.length} / {BATCH_SIZE}</span>
+              </div>
+              <div className="batch-item highlight">
+                <span className="label">Total Duration</span>
+                <span className="value">{calculateDuration()}</span>
+              </div>
+            </div>
           </div>
-          <div className="stat-item">
-            <span className="stat-label">First Scan</span>
-            <span className="stat-value">{firstScanTime || '--:--:--'}</span>
-          </div>
-        </div>
+        )}
 
         {/* Main Action: Open QR Scanner */}
         <div className="actions">
           {batchCountCheck(scans.length) ? (
-            <button className="btn-primary" onClick={openScanner}>
-              Open QR Scanner
+            <button className="btn-primary" onClick={openScanner} disabled={!punchNumber || !PUNCH_MAP[punchNumber]}>
+              {scans.length > 0 ? "Continue Scanning" : "Start Batch Scan"}
             </button>
           ) : (
             <div className="batch-complete-msg">Batch Complete ({BATCH_SIZE})</div>
@@ -280,23 +325,27 @@ function App() {
           </button>
         </div>
 
-        {/* Scan List */}
+        {/* Scan List - Simplified */}
         {scans.length > 0 && (
-          <div className="scan-list">
-            <h3>Scanned Items</h3>
-            <ul>
+          <div className="scan-list-container">
+            <div className="scan-list-header">
+              <span>#</span>
+              <span>QR Value</span>
+              <span>Time</span>
+              <span>Img</span>
+            </div>
+            <div className="scan-list-body">
               {[...scans].reverse().map((scan, i) => (
-                <li key={i} className="scan-item">
-                  <div className="scan-info">
-                    <strong>{scan.qrValue}</strong>
-                    <span>{scan.scanTime}</span>
-                  </div>
-                  {scan.capturedImage && (
-                    <img src={scan.capturedImage} alt="Snap" className="scan-thumb" />
-                  )}
-                </li>
+                <div key={i} className="scan-table-row">
+                  <span className="col-idx">{scan.scanCount}</span>
+                  <span className="col-qr">{scan.qrValue}</span>
+                  <span className="col-time">{scan.scanTime}</span>
+                  <span className="col-img">
+                    {scan.capturedImage ? "📷" : ""}
+                  </span>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         )}
 
