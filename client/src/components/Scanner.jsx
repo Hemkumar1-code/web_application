@@ -3,7 +3,7 @@ import { Html5Qrcode } from "html5-qrcode";
 
 const Scanner = ({ onScan, onClose }) => {
     const [error, setError] = useState(null);
-    const [isTorchSupported, setIsTorchSupported] = useState(false);
+    const [isTorchSupported, setIsTorchSupported] = useState(true); // Default to true to show immediately
     const [isTorchOn, setIsTorchOn] = useState(false);
 
     const scannerRef = useRef(null);
@@ -63,19 +63,20 @@ const Scanner = ({ onScan, onClose }) => {
                 );
                 scannerRef.current = html5QrCode;
 
-                // Aggressively check for Torch Capability
+                // Check for Torch Capability
                 let attempts = 0;
                 const checkInterval = setInterval(() => {
                     attempts++;
                     const track = getVideoTrack();
                     if (track && track.getCapabilities) {
                         const capabilities = track.getCapabilities();
-                        if (capabilities.torch) {
-                            setIsTorchSupported(true);
-                            clearInterval(checkInterval);
+                        if (!capabilities.torch) {
+                            // Only hide if definitively NOT supported
+                            setIsTorchSupported(false);
                         }
+                        clearInterval(checkInterval);
                     }
-                    if (attempts > 30) { // Try for 3 seconds (100ms * 30)
+                    if (attempts > 20) {
                         clearInterval(checkInterval);
                     }
                 }, 100);
