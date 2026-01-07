@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Scanner from './components/Scanner';
+import PhotoCapture from './components/PhotoCapture';
 import './index.css';
 
 const PUNCH_MAP = {
@@ -16,11 +17,15 @@ function App() {
   const [employeeName, setEmployeeName] = useState('');
   const [scans, setScans] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
+  const [isTakingPhoto, setIsTakingPhoto] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
 
   // Timing State
   const [firstScanTime, setFirstScanTime] = useState(null);
+
+  // New Image Handling
+  const [pendingImage, setPendingImage] = useState(null);
 
   // Load from LocalStorage on Mount
   useEffect(() => {
@@ -32,7 +37,7 @@ function App() {
         setEmployeeName(parsed.employeeName || '');
         setScans(parsed.scans || []);
         setFirstScanTime(parsed.firstScanTime || null);
-        console.log("Restored state", parsed);
+        setPendingImage(parsed.pendingImage || null);
       } catch (e) {
         console.error("Failed to restore state", e);
       }
@@ -45,10 +50,11 @@ function App() {
       punchNumber,
       employeeName,
       scans,
-      firstScanTime
+      firstScanTime,
+      pendingImage
     };
     localStorage.setItem('geoGuardState', JSON.stringify(stateToSave));
-  }, [punchNumber, employeeName, scans, firstScanTime]);
+  }, [punchNumber, employeeName, scans, firstScanTime, pendingImage]);
 
   const handlePunchChange = (e) => {
     const val = e.target.value;
@@ -68,7 +74,13 @@ function App() {
     }
   };
 
-  const handleScan = async (qrValue, imageData) => {
+  const handlePhotoCaptured = (imageData) => {
+    setPendingImage(imageData);
+    setMessage({ type: 'success', text: 'Image captured successfully! Scan QR to link it.' });
+    setIsTakingPhoto(false);
+  };
+
+  const handleScan = async (qrValue) => {
     setIsScanning(false);
 
     if (!qrValue) return;
@@ -102,23 +114,32 @@ function App() {
       setFirstScanTime(timeString);
     }
 
+    // Use Pending Image if available, otherwise "No Image"
+    // Requirement said: "Store the image reference... Captured_Image column can start empty"
+    // Linking Rule: "Most recent scan OR next scan". We chose Next Scan (Pending Image).
+    const imageToLink = pendingImage || null;
+
     const newScan = {
-      batchNumber: punchNumber, // Using punchNumber as BatchID for now, or could generate a unique ID
+      batchNumber: punchNumber,
       scanCount: scans.length + 1,
       punchNumber,
       name: PUNCH_MAP[punchNumber],
       qrValue,
       scanTime: timeString,
-      capturedImage: imageData, // Base64
+      capturedImage: imageToLink, // Link the pending image
       firstScanTime: currentFirstScanTime,
-      lastScanTime: timeString, // This specific row's last scan time (which is itself)
+      lastScanTime: timeString,
     };
 
     const updatedScans = [...scans, newScan];
     setScans(updatedScans);
 
+    // Clear pending image after linking
+    if (pendingImage) {
+      setPendingImage(null);
+    }
+
     try {
-      // Optional: Log to server (without image to save bw)
       await fetch('/api/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,19 +168,13 @@ function App() {
   const finalizeBatch = async (finalScans, firstTime, lastTime) => {
     setMessage({ type: 'info', text: `Batch Complete (${BATCH_SIZE}). Finalizing and sending email...` });
 
-    // Calculate Duration
-    // Need full Date objects to diff, but we stored strings.
-    // Ideally we store timestamps. But for display we used strings.
-    // Let's rely on the server or recalculate if we had proper timestamps.
-    // For now, let's just pass the strings. The requirements just say "Calculate... Total_Scan_Duration".
-    // I should probably store raw timestamps in the scan object too.
-
     try {
       const response = await fetch('/api/finalize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           batchNumber: punchNumber,
+          operatorName: employeeName,
           scans: finalScans,
           firstScanTime: firstTime,
           lastScanTime: lastTime
@@ -170,7 +185,6 @@ function App() {
 
       if (response.ok && result.batchCompleted) {
         setMessage({ type: 'success', text: 'Batch Email Sent Successfully!' });
-        // Auto Reset
         setTimeout(() => {
           resetSession();
         }, 3000);
@@ -185,6 +199,7 @@ function App() {
   const resetSession = () => {
     setScans([]);
     setFirstScanTime(null);
+    setPendingImage(null);
     setMessage({ type: 'info', text: 'Session Reset. Ready for next batch.' });
     localStorage.removeItem('geoGuardState');
   };
@@ -197,9 +212,9 @@ function App() {
     setIsScanning(true);
   };
 
-  // Camera Icon SVG
+  // Fixed Camera Icon
   const CameraIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
       <circle cx="12" cy="13" r="4"></circle>
     </svg>
@@ -207,12 +222,17 @@ function App() {
 
   return (
     <div className="app-container">
+
+      {/* Fixed Camera Icon (Top Left) */}
+      <button
+        className="fixed-camera-btn"
+        onClick={() => setIsTakingPhoto(true)}
+        title="Snap Photo"
+      >
+        <CameraIcon />
+      </button>
+
       <header className="app-header">
-        <div className="header-left">
-          <button className="camera-btn" onClick={openScanner} title="Open Camera">
-            <CameraIcon />
-          </button>
-        </div>
         <h1>GeoGuard</h1>
       </header>
 
@@ -245,16 +265,18 @@ function App() {
           </div>
         </div>
 
-        {/* Scanner Overlay */}
-        {isScanning && (
-          <Scanner onScan={handleScan} onClose={() => setIsScanning(false)} />
-        )}
-
-        {/* Manual Close / Status */}
+        {/* Main Action: Open QR Scanner */}
         <div className="actions">
-          {/* Main action is now the camera icon, but we can keep Reset */}
-          <button className="btn-secondary" onClick={resetSession}>
-            Reset Batch
+          {batchCountCheck(scans.length) ? (
+            <button className="btn-primary" onClick={openScanner}>
+              Open QR Scanner
+            </button>
+          ) : (
+            <div className="batch-complete-msg">Batch Complete ({BATCH_SIZE})</div>
+          )}
+
+          <button className="btn-secondary" onClick={resetSession} style={{ marginLeft: '10px' }}>
+            Reset
           </button>
         </div>
 
@@ -278,11 +300,35 @@ function App() {
           </div>
         )}
 
+        {/* Pending Image Indicator */}
+        {pendingImage && (
+          <div className="pending-image-indicator">
+            <img src={pendingImage} alt="Pending" />
+            <span>Image Ready. Scan QR to Link.</span>
+            <button onClick={() => setPendingImage(null)} title="Clear Image">×</button>
+          </div>
+        )}
+
         {message && <div className={`message ${message.type}`}>{message.text}</div>}
 
       </div>
+
+      {/* Modals */}
+      {isScanning && (
+        <Scanner onScan={handleScan} onClose={() => setIsScanning(false)} />
+      )}
+
+      {isTakingPhoto && (
+        <PhotoCapture onCapture={handlePhotoCaptured} onClose={() => setIsTakingPhoto(false)} />
+      )}
+
     </div>
   );
+}
+
+// Helper to clean up JSX
+function batchCountCheck(count) {
+  return count < BATCH_SIZE;
 }
 
 export default App;

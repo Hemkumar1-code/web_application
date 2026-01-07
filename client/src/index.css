@@ -19,14 +19,12 @@
 body {
   margin: 0;
   font-family: 'Outfit', 'Inter', sans-serif;
-  /* Try to use Outfit if available, else Inter */
   background: var(--bg-gradient);
   color: var(--text-main);
   min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  /* Changed from center to allow scrolling */
   padding-top: 40px;
   overflow-x: hidden;
 }
@@ -48,13 +46,6 @@ body {
   padding: 10px;
 }
 
-.header-left {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
 .app-header h1 {
   font-size: 1.8rem;
   font-weight: 700;
@@ -65,29 +56,33 @@ body {
   letter-spacing: -0.5px;
 }
 
-.camera-btn {
+/* Fixed Camera Icon */
+.fixed-camera-btn {
+  position: fixed;
+  top: 15px;
+  left: 15px;
+  z-index: 2000;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
   background: var(--primary);
   color: white;
   border: none;
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
-  transition: all 0.2s ease;
+  transition: transform 0.2s;
 }
 
-.camera-btn:hover {
+.fixed-camera-btn:hover {
+  transform: scale(1.1);
   background: var(--primary-hover);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.5);
 }
 
-.camera-btn:active {
-  transform: translateY(0);
+.fixed-camera-btn:active {
+  transform: scale(0.95);
 }
 
 .main-card {
@@ -255,6 +250,23 @@ input[type="text"].invalid {
   justify-content: center;
 }
 
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.2s;
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
 button.btn-secondary {
   background: transparent;
   color: var(--text-muted);
@@ -269,6 +281,15 @@ button.btn-secondary {
 button.btn-secondary:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-main);
+}
+
+.batch-complete-msg {
+  color: var(--success);
+  font-weight: 600;
+  padding: 10px;
+  border: 1px solid var(--success);
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.1);
 }
 
 /* Scan List */
@@ -331,6 +352,41 @@ button.btn-secondary:hover {
   border-radius: 8px;
   object-fit: cover;
   border: 1px solid var(--glass-border);
+}
+
+/* Pending Image Indicator */
+.pending-image-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(99, 102, 241, 0.2);
+  border: 1px solid var(--primary);
+  padding: 10px;
+  border-radius: 12px;
+  margin-top: 20px;
+  animation: fadeIn 0.3s;
+}
+
+.pending-image-indicator img {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.pending-image-indicator span {
+  font-size: 0.9rem;
+  color: var(--text-main);
+  flex: 1;
+}
+
+.pending-image-indicator button {
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.2rem;
+  padding: 0 5px;
+  border: none;
+  cursor: pointer;
 }
 
 /* Messages */

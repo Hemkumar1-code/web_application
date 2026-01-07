@@ -5,24 +5,6 @@ const Scanner = ({ onScan, onClose }) => {
     const [error, setError] = useState(null);
     const scannerRef = useRef(null);
 
-    const captureImage = () => {
-        try {
-            const videoElement = document.querySelector("#reader video");
-            if (videoElement) {
-                const canvas = document.createElement("canvas");
-                const scale = Math.min(1, 320 / videoElement.videoWidth);
-                canvas.width = videoElement.videoWidth * scale;
-                canvas.height = videoElement.videoHeight * scale;
-                const ctx = canvas.getContext("2d");
-                ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-                return canvas.toDataURL("image/jpeg", 0.5);
-            }
-        } catch (e) {
-            console.error("Image capture failed", e);
-        }
-        return null; // Return null if capture fails
-    };
-
     useEffect(() => {
         const scannerId = "reader";
         let html5QrCode;
@@ -36,11 +18,9 @@ const Scanner = ({ onScan, onClose }) => {
                     { facingMode: "environment" },
                     config,
                     (decodedText) => {
-                        // Capture image BEFORE stopping
-                        const imageData = captureImage();
-
+                        // Success callback - Pure QR Scan
                         html5QrCode.stop().then(() => {
-                            onScan(decodedText, imageData);
+                            onScan(decodedText);
                         }).catch(err => console.error("Failed to stop scanner", err));
                     },
                     (errorMessage) => {

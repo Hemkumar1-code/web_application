@@ -61,7 +61,7 @@ const calculateDuration = (startStr, endStr) => {
 const handler = async (req, res) => {
     let tempFilePath = null;
     try {
-        const { batchNumber, scans, firstScanTime, lastScanTime } = req.body;
+        const { batchNumber, operatorName, scans, firstScanTime, lastScanTime } = req.body;
 
         if (!batchNumber || !scans || !Array.isArray(scans)) {
             console.error('Invalid input');
@@ -144,11 +144,24 @@ const handler = async (req, res) => {
 
             await transporter.verify();
 
+            const mailText = `Batch Scanning Report
+
+Batch Number: ${batchNumber}
+Punch Number: ${batchNumber}
+Operator Name: ${operatorName || 'N/A'}
+Total Scans: ${scans.length}
+
+First Scan Time: ${firstScanTime}
+Last Scan Time: ${lastScanTime}
+Total Duration: ${totalDuration}
+
+Please find the detailed Excel report attached.`;
+
             const mailOptions = {
                 from: user,
                 to: "hemk3672@gmail.com",
                 subject: `Batch Completed: ${batchNumber} - ${scans.length} Scans`,
-                text: `Batch scanning completed.\n\nBatch Number: ${batchNumber}\nScans: ${scans.length}\nDuration: ${totalDuration}\n\nSee attached Excel file for details.`,
+                text: mailText,
                 attachments: [{ filename: `${batchNumber}_Report.xlsx`, path: tempFilePath }]
             };
 
