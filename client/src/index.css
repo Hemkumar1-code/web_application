@@ -469,8 +469,9 @@ input[type="text"].invalid {
 
 .close-btn {
   position: absolute;
-  top: 15px;
-  right: 15px;
+  top: 20px;
+  left: 20px;
+  /* Moved to Left to accommodate Flash on Right */
   background: rgba(255, 255, 255, 0.2);
   border: 2px solid white;
   color: white;
@@ -591,8 +592,9 @@ input[type="text"].invalid {
 /* Flash Button */
 .flash-btn {
   position: absolute;
-  bottom: 30px;
-  right: 30px;
+  top: 20px;
+  right: 20px;
+  /* Moved to Top-Right */
   background: rgba(255, 255, 255, 0.25);
   border: 2px solid rgba(255, 255, 255, 0.9);
   color: white;
