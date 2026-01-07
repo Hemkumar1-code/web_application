@@ -63,16 +63,22 @@ const Scanner = ({ onScan, onClose }) => {
                 );
                 scannerRef.current = html5QrCode;
 
-                // Check Torch Capability
-                setTimeout(() => {
+                // Aggressively check for Torch Capability
+                let attempts = 0;
+                const checkInterval = setInterval(() => {
+                    attempts++;
                     const track = getVideoTrack();
                     if (track && track.getCapabilities) {
                         const capabilities = track.getCapabilities();
                         if (capabilities.torch) {
                             setIsTorchSupported(true);
+                            clearInterval(checkInterval);
                         }
                     }
-                }, 500); // Wait a bit for video to mount
+                    if (attempts > 30) { // Try for 3 seconds (100ms * 30)
+                        clearInterval(checkInterval);
+                    }
+                }, 100);
 
             } catch (err) {
                 console.error("Error starting scanner:", err);
@@ -105,7 +111,7 @@ const Scanner = ({ onScan, onClose }) => {
     return (
         <div className="scanner-overlay">
             <div className="scanner-box">
-                {/* Torch Button */}
+
                 {isTorchSupported && (
                     <button
                         className={`flash-btn ${isTorchOn ? 'active' : ''}`}
