@@ -42,23 +42,32 @@ const PhotoCapture = ({ onCapture, onClose }) => {
             const canvas = canvasRef.current;
             const context = canvas.getContext('2d');
 
-            // Calculate scaling to max 800px width (or 320 to match previous optimization)
-            // User requirement: "Store the image reference... Clean Excel logging"
-            // Let's stick to the optimized size (320px) to keep Excel happy unless user wants full res.
-            // keeping it decent quality but small size.
-            const scale = Math.min(1, 480 / video.videoWidth);
+            // Reduce to max 200px width for Excel 32k char limit safety
+            // 200px should keep it well under 20KB base64string.
+            const scale = Math.min(1, 200 / video.videoWidth);
 
             canvas.width = video.videoWidth * scale;
             canvas.height = video.videoHeight * scale;
 
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-            // compressed jpeg
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            // Start with medium compression
+            let quality = 0.6;
+            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+            // Recursive reduction if still too large for Excel cell (32767 chars)
+            while (dataUrl.length > 30000 && quality > 0.1) {
+                quality -= 0.1;
+                dataUrl = canvas.toDataURL('image/jpeg', quality);
+            }
+
+            if (dataUrl.length > 32700) {
+                console.warn("Image still too large for Excel, sending placeholder");
+                dataUrl = "Image too large";
+            }
+
             onCapture(dataUrl);
-            onClose(); // Close automatically after capture? Or let user close? 
-            // "Capture image -> Save -> Show message" 
-            // Usually better to close after successful capture.
+            onClose();
         }
     };
 

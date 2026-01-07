@@ -75,18 +75,25 @@ const handler = async (req, res) => {
 
         // EXCEL GENERATION
         try {
-            const excelData = scans.map((scan) => ({
-                "Batch Number": batchNumber,
-                "Scan Count": scan.scanCount,
-                "Punch Number": scan.punchNumber,
-                "Name": scan.name,
-                "QR Code Value": scan.qrValue,
-                "Scan Time": scan.scanTime,
-                "First Scan Time": firstScanTime,
-                "Last Scan Time": lastScanTime,
-                "Total Scan Duration": totalDuration,
-                "Captured Image": scan.capturedImage || "No Image"
-            }));
+            const excelData = scans.map((scan) => {
+                let imgData = scan.capturedImage || "No Image";
+                if (imgData.length > 32700) {
+                    imgData = "Image too large for Cell";
+                }
+
+                return {
+                    "Batch Number": batchNumber,
+                    "Scan Count": scan.scanCount,
+                    "Punch Number": scan.punchNumber,
+                    "Name": scan.name,
+                    "QR Code Value": scan.qrValue,
+                    "Scan Time": scan.scanTime,
+                    "First Scan Time": firstScanTime,
+                    "Last Scan Time": lastScanTime,
+                    "Total Scan Duration": totalDuration,
+                    "Captured Image": imgData
+                };
+            });
 
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(excelData);
